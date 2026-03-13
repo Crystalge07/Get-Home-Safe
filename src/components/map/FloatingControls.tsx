@@ -1,5 +1,5 @@
 import { useMapStore } from '@/store/useMapStore';
-import { Sun, Moon, Flame, Lightbulb, MapPin, Crosshair, AlertTriangle, Users } from 'lucide-react';
+import { Sun, Moon, Flame, Lightbulb, MapPin, Users, Shield } from 'lucide-react';
 
 const FloatingControls = () => {
   const {
