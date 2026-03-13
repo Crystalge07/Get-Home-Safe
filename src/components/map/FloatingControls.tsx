@@ -81,7 +81,4 @@ const FloatingControls = () => {
   );
 };
 
-// Need Shield import
-import { Shield } from 'lucide-react';
-
 export default FloatingControls;
