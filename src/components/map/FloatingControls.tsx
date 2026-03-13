@@ -30,13 +30,13 @@ const FloatingControls = () => {
       </div>
 
       {/* Right side: layer toggles */}
-      <div className="fixed right-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col gap-2">
+      <div className="fixed right-4 top-16 z-[1000] flex flex-col gap-2">
         {layerButtons.map(({ active, toggle, icon: Icon, label, activeColor }) => (
           <button
             key={label}
             onClick={toggle}
             className={`w-10 h-10 rounded-full fab-shadow flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 ${
-              active ? 'bg-card ring-2 ring-primary/30' : 'bg-card/90'
+              active ? 'bg-card ring-2 ring-primary/30' : 'bg-card'
             }`}
             title={label}
           >
