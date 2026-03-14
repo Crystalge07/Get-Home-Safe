@@ -37,14 +37,20 @@ const FloatingControls = () => {
         ))}
       </div>
 
-      {/* Bottom-right: Walk Me Home FAB (pinned above bottom sheet) */}
-      <div className="fixed right-4 bottom-4 z-[1001]">
+      {/* Top-left: SafeMap logo + Walk Me Home */}
+      <div className="fixed top-4 left-4 z-[1001] flex flex-col gap-2">
+        <div className="flex items-center gap-2 px-3 py-2 bg-card/95 rounded-xl fab-shadow backdrop-blur-sm">
+          <div className="w-6 h-6 rounded-lg bg-primary flex items-center justify-center">
+            <Shield className="w-3.5 h-3.5 text-primary-foreground" />
+          </div>
+          <span className="text-sm font-bold text-foreground tracking-tight">SafeMap</span>
+        </div>
         <button
           onClick={() => setWalkMeHomePanelOpen(true)}
-          className={`flex items-center gap-2 px-4 h-10 rounded-full fab-shadow transition-all duration-200 hover:scale-105 active:scale-95 ${
+          className={`flex items-center justify-center gap-2 px-4 h-10 rounded-xl fab-shadow transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] w-full ${
             walkMeHomeActive
               ? 'bg-primary text-primary-foreground'
-              : 'bg-card text-foreground'
+              : 'bg-card/95 text-foreground backdrop-blur-sm'
           }`}
         >
           <Users className="w-4 h-4" />
@@ -58,16 +64,6 @@ const FloatingControls = () => {
             </span>
           )}
         </button>
-      </div>
-
-      {/* Top-left: SafeMap logo */}
-      <div className="fixed top-4 left-4 z-[1000]">
-        <div className="flex items-center gap-2 px-3 py-2 bg-card/95 rounded-xl fab-shadow backdrop-blur-sm">
-          <div className="w-6 h-6 rounded-lg bg-primary flex items-center justify-center">
-            <Shield className="w-3.5 h-3.5 text-primary-foreground" />
-          </div>
-          <span className="text-sm font-bold text-foreground tracking-tight">SafeMap</span>
-        </div>
       </div>
     </>
   );
