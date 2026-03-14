@@ -69,7 +69,7 @@ const RouteCards = () => {
         );
       })}
 
-      <button className="w-full py-3 mt-1 bg-accent text-accent-foreground rounded-xl text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98]">
+      <button className="w-full py-3 mt-1 bg-primary text-primary-foreground rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-90 active:scale-[0.98]">
         Start Walk
       </button>
     </div>

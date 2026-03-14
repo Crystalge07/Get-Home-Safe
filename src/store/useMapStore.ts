@@ -28,6 +28,10 @@ interface MapState {
   walkMeHomeActive: boolean;
   setWalkMeHome: (v: boolean) => void;
 
+  /** Walk Me Home modal/panel open (select trusted contacts) */
+  walkMeHomePanelOpen: boolean;
+  setWalkMeHomePanelOpen: (v: boolean) => void;
+
   sheetOpen: boolean;
   setSheetOpen: (v: boolean) => void;
 
@@ -73,6 +77,9 @@ export const useMapStore = create<MapState>((set) => ({
 
   walkMeHomeActive: false,
   setWalkMeHome: (v) => set({ walkMeHomeActive: v }),
+
+  walkMeHomePanelOpen: false,
+  setWalkMeHomePanelOpen: (v) => set({ walkMeHomePanelOpen: v }),
 
   sheetOpen: true,
   setSheetOpen: (v) => set({ sheetOpen: v }),

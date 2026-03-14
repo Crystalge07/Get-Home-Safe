@@ -10,7 +10,7 @@ const FloatingControls = () => {
     showSafeAreas,
     toggleSafeAreas,
     walkMeHomeActive,
-    setWalkMeHome,
+    setWalkMeHomePanelOpen,
   } = useMapStore();
 
   const layerButtons = [
@@ -37,13 +37,13 @@ const FloatingControls = () => {
         ))}
       </div>
 
-      {/* Bottom-right: Walk Me Home FAB (pinned at bottom) */}
-      <div className="fixed right-4 bottom-4 z-[1000]">
+      {/* Bottom-right: Walk Me Home FAB (pinned above bottom sheet) */}
+      <div className="fixed right-4 bottom-4 z-[1001]">
         <button
-          onClick={() => setWalkMeHome(!walkMeHomeActive)}
+          onClick={() => setWalkMeHomePanelOpen(true)}
           className={`flex items-center gap-2 px-4 h-10 rounded-full fab-shadow transition-all duration-200 hover:scale-105 active:scale-95 ${
             walkMeHomeActive
-              ? 'bg-accent text-accent-foreground'
+              ? 'bg-primary text-primary-foreground'
               : 'bg-card text-foreground'
           }`}
         >
@@ -53,8 +53,8 @@ const FloatingControls = () => {
           </span>
           {walkMeHomeActive && (
             <span className="relative flex h-2 w-2">
-              <span className="animate-pulse-ring absolute inline-flex h-full w-full rounded-full bg-accent-foreground/60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-foreground" />
+              <span className="animate-pulse-ring absolute inline-flex h-full w-full rounded-full bg-primary-foreground/60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-foreground" />
             </span>
           )}
         </button>
