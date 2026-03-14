@@ -1,36 +1,28 @@
 import { useMapStore } from '@/store/useMapStore';
-import { Sun, Moon, Flame, Lightbulb, MapPin, Users, Shield } from 'lucide-react';
+import { Flame, Building2, MapPin, Users, Shield } from 'lucide-react';
 
 const FloatingControls = () => {
   const {
-    isDarkMode, toggleDarkMode,
-    showHeatmap, toggleHeatmap,
-    showLighting, toggleLighting,
-    showEmergency, toggleEmergency,
-    walkMeHomeActive, setWalkMeHome,
+    showHeatmap,
+    toggleHeatmap,
+    showPoliceFire,
+    togglePoliceFire,
+    showSafeAreas,
+    toggleSafeAreas,
+    walkMeHomeActive,
+    setWalkMeHome,
   } = useMapStore();
 
   const layerButtons = [
-    { active: showHeatmap, toggle: toggleHeatmap, icon: Flame, label: 'Crime', activeColor: 'text-danger' },
-    { active: showLighting, toggle: toggleLighting, icon: Lightbulb, label: 'Lights', activeColor: 'text-warning' },
-    { active: showEmergency, toggle: toggleEmergency, icon: MapPin, label: 'Safe', activeColor: 'text-primary' },
+    { active: showHeatmap, toggle: toggleHeatmap, icon: Flame, label: 'Crime Heatmap', activeColor: 'text-danger' },
+    { active: showPoliceFire, toggle: togglePoliceFire, icon: Building2, label: 'Police & Fire Stations', activeColor: 'text-primary' },
+    { active: showSafeAreas, toggle: toggleSafeAreas, icon: MapPin, label: '24/7 Safe Areas', activeColor: 'text-accent' },
   ];
 
   return (
     <>
-      {/* Top-right: day/night toggle */}
-      <div className="fixed top-4 right-4 z-[1000]">
-        <button
-          onClick={toggleDarkMode}
-          className="w-10 h-10 rounded-full bg-card fab-shadow flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95"
-          title={isDarkMode ? 'Switch to day' : 'Switch to night'}
-        >
-          {isDarkMode ? <Sun className="w-4.5 h-4.5 text-warning" /> : <Moon className="w-4.5 h-4.5 text-muted-foreground" />}
-        </button>
-      </div>
-
-      {/* Right side: layer toggles */}
-      <div className="fixed right-4 top-16 z-[1000] flex flex-col gap-2">
+      {/* Right side: layer toggles (top to bottom) */}
+      <div className="fixed right-4 top-20 z-[1000] flex flex-col gap-2">
         {layerButtons.map(({ active, toggle, icon: Icon, label, activeColor }) => (
           <button
             key={label}
@@ -45,8 +37,8 @@ const FloatingControls = () => {
         ))}
       </div>
 
-      {/* Bottom-right: Walk Me Home FAB */}
-      <div className="fixed right-4 z-[1000]" style={{ bottom: 340 }}>
+      {/* Bottom-right: Walk Me Home FAB (pinned at bottom) */}
+      <div className="fixed right-4 bottom-4 z-[1000]">
         <button
           onClick={() => setWalkMeHome(!walkMeHomeActive)}
           className={`flex items-center gap-2 px-4 h-10 rounded-full fab-shadow transition-all duration-200 hover:scale-105 active:scale-95 ${

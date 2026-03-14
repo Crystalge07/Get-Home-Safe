@@ -1,73 +1,50 @@
-# Welcome to your Lovable project
+# SafeMap
 
-## Project info
+Find the safest walking route home. SafeMap shows crime heatmaps, police & fire stations, 24/7 safe areas, and lets you choose between the fastest route and the safest route based on crime or general safety index data.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
+## Tech stack
 
 - Vite
 - TypeScript
 - React
 - shadcn-ui
 - Tailwind CSS
+- Google Maps JavaScript API & Directions API
+- Zustand, TanStack Query, Framer Motion
 
-## How can I deploy this project?
+## Setup
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+1. Clone the repository and install dependencies:
 
-## Can I connect a custom domain to my Lovable project?
+```sh
+npm i
+```
 
-Yes, you can!
+2. Create a `.env` file in the project root with your Google Maps API key (Maps JavaScript API and Directions API must be enabled):
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```
+VITE_GOOGLE_MAPS_API_KEY=your_api_key_here
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+3. Start the dev server:
+
+```sh
+npm run dev
+```
+
+## Safety layers
+
+- **Crime-based safety**: Heatmap and route scoring use local crime data (default demo points; can be wired to SpotCrime API or local open data in `GoogleMapView.tsx`).
+- **General safety index**: Set `ARCGIS_SAFETY_GEOJSON_URL` in `src/config/arcgis.ts` to the ArcGIS feature service query URL that returns GeoJSON (e.g. from the [ArcGIS safety experience](https://experience.arcgis.com/experience/19cd9accd61542ffb62be3b5f29ee778)). The app overlays a color-coded safety zone layer and uses it for route scoring when that mode is selected.
+
+The app uses the currently selected safety layer to score the “safest” walking route versus the “fastest” route.
+
+## Build
+
+```sh
+npm run build
+```
+
+## Deploy
+
+Build the project and deploy the `dist` folder to any static host (Vercel, Netlify, etc.).

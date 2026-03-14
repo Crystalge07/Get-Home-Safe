@@ -1,26 +1,29 @@
 import { create } from 'zustand';
 
-type RouteMode = 'fastest' | 'safest' | 'balanced';
+export type RouteMode = 'fastest' | 'safest' | 'balanced';
+
+/** Which safety data source is active for heatmap and route scoring */
+export type SafetyLayerMode = 'crime' | 'general';
 
 interface MapState {
-  isDarkMode: boolean;
-  toggleDarkMode: () => void;
-  setDarkMode: (v: boolean) => void;
-
   routeMode: RouteMode;
   setRouteMode: (mode: RouteMode) => void;
 
+  /** Crime heatmap overlay */
   showHeatmap: boolean;
   toggleHeatmap: () => void;
 
-  showLighting: boolean;
-  toggleLighting: () => void;
+  /** Police and fire station markers */
+  showPoliceFire: boolean;
+  togglePoliceFire: () => void;
 
-  showSafeHavens: boolean;
-  toggleSafeHavens: () => void;
+  /** 24/7 safe areas: hospitals, pharmacies, 24hr businesses */
+  showSafeAreas: boolean;
+  toggleSafeAreas: () => void;
 
-  showEmergency: boolean;
-  toggleEmergency: () => void;
+  /** Safety layer: crime-based vs general (ArcGIS) index */
+  safetyLayerMode: SafetyLayerMode;
+  setSafetyLayerMode: (mode: SafetyLayerMode) => void;
 
   walkMeHomeActive: boolean;
   setWalkMeHome: (v: boolean) => void;
@@ -28,34 +31,45 @@ interface MapState {
   sheetOpen: boolean;
   setSheetOpen: (v: boolean) => void;
 
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
+  /** Origin and destination for routing (address or place IDs) */
+  originQuery: string;
+  destinationQuery: string;
+  setOriginQuery: (q: string) => void;
+  setDestinationQuery: (q: string) => void;
+
+  /** Resolved origin/destination for display and Directions API */
+  origin: { lat: number; lng: number; label?: string } | null;
+  destination: { lat: number; lng: number; label?: string } | null;
+  setOrigin: (v: { lat: number; lng: number; label?: string } | null) => void;
+  setDestination: (v: { lat: number; lng: number; label?: string } | null) => void;
+
+  /** Last fetched route result for display (lat/lng path) */
+  routeResult: {
+    fastest: { polyline: { lat: number; lng: number }[]; duration: string; distance: string } | null;
+    safest: { polyline: { lat: number; lng: number }[]; duration: string; distance: string; score: string } | null;
+  } | null;
+  setRouteResult: (v: MapState['routeResult']) => void;
+
+  /** True when Google Maps script has loaded (for Places Autocomplete in BottomSheet) */
+  mapsLoaded: boolean;
+  setMapsLoaded: (v: boolean) => void;
 }
 
-const getInitialDarkMode = () => {
-  const hour = new Date().getHours();
-  return hour < 6 || hour >= 20;
-};
-
 export const useMapStore = create<MapState>((set) => ({
-  isDarkMode: getInitialDarkMode(),
-  toggleDarkMode: () => set((s) => ({ isDarkMode: !s.isDarkMode })),
-  setDarkMode: (v) => set({ isDarkMode: v }),
-
   routeMode: 'balanced',
   setRouteMode: (mode) => set({ routeMode: mode }),
 
   showHeatmap: false,
   toggleHeatmap: () => set((s) => ({ showHeatmap: !s.showHeatmap })),
 
-  showLighting: false,
-  toggleLighting: () => set((s) => ({ showLighting: !s.showLighting })),
+  showPoliceFire: false,
+  togglePoliceFire: () => set((s) => ({ showPoliceFire: !s.showPoliceFire })),
 
-  showSafeHavens: false,
-  toggleSafeHavens: () => set((s) => ({ showSafeHavens: !s.showSafeHavens })),
+  showSafeAreas: false,
+  toggleSafeAreas: () => set((s) => ({ showSafeAreas: !s.showSafeAreas })),
 
-  showEmergency: false,
-  toggleEmergency: () => set((s) => ({ showEmergency: !s.showEmergency })),
+  safetyLayerMode: 'crime',
+  setSafetyLayerMode: (mode) => set({ safetyLayerMode: mode }),
 
   walkMeHomeActive: false,
   setWalkMeHome: (v) => set({ walkMeHomeActive: v }),
@@ -63,6 +77,19 @@ export const useMapStore = create<MapState>((set) => ({
   sheetOpen: true,
   setSheetOpen: (v) => set({ sheetOpen: v }),
 
-  searchQuery: '',
-  setSearchQuery: (q) => set({ searchQuery: q }),
+  originQuery: '',
+  destinationQuery: '',
+  setOriginQuery: (q) => set({ originQuery: q }),
+  setDestinationQuery: (q) => set({ destinationQuery: q }),
+
+  origin: null,
+  destination: null,
+  setOrigin: (v) => set({ origin: v }),
+  setDestination: (v) => set({ destination: v }),
+
+  routeResult: null,
+  setRouteResult: (v) => set({ routeResult: v }),
+
+  mapsLoaded: false,
+  setMapsLoaded: (v) => set({ mapsLoaded: v }),
 }));
