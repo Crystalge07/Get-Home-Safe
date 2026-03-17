@@ -4,7 +4,7 @@ import { Search } from 'lucide-react';
 import RouteCards from './RouteCards';
 import { useRef, useState, useEffect } from 'react';
 
-const SNAP_POINTS = { collapsed: 72, mid: 380, full: 560 };
+const SNAP_POINTS = { collapsed: 72, mid: 200, full: 440 };
 
 const BottomSheet = () => {
   const {
