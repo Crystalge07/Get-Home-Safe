@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJsApiLoader, GoogleMap, useGoogleMap } from '@react-google-maps/api';
 import { useMapStore } from '@/store/useMapStore';
-import { ARCGIS_SAFETY_GEOJSON_URL } from '@/config/arcgis';
+
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 40.753, lng: -73.979 };
@@ -62,7 +62,7 @@ function RouteAndLayers() {
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
   const routeMarkersRef = useRef<google.maps.Marker[]>([]);
   const heatmapRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
-  const arcgisDataLayerRef = useRef<google.maps.Data | null>(null);
+
   const policeFireMarkersRef = useRef<google.maps.Marker[]>([]);
   const safeAreasMarkersRef = useRef<google.maps.Marker[]>([]);
 
@@ -72,7 +72,6 @@ function RouteAndLayers() {
     showHeatmap,
     showPoliceFire,
     showSafeAreas,
-    safetyLayerMode,
   } = useMapStore();
 
   // Route polyline (walking route)
@@ -129,9 +128,9 @@ function RouteAndLayers() {
     map.fitBounds(bounds);
   }, [map, routeResult, routeMode]);
 
-  // Heatmap (crime) – when crime layer is active and toggle on
+  // Crime heatmap overlay
   useEffect(() => {
-    if (!map || safetyLayerMode !== 'crime' || !showHeatmap) {
+    if (!map || !showHeatmap) {
       if (heatmapRef.current) {
         heatmapRef.current.setMap(null);
         heatmapRef.current = null;
@@ -151,43 +150,9 @@ function RouteAndLayers() {
     } else {
       heatmapRef.current.setMap(map);
     }
-  }, [map, showHeatmap, safetyLayerMode]);
+  }, [map, showHeatmap]);
 
-  // ArcGIS general safety index overlay (when safety layer is 'general' and heatmap on)
-  useEffect(() => {
-    if (!map || safetyLayerMode !== 'general' || !showHeatmap || !ARCGIS_SAFETY_GEOJSON_URL) {
-      if (arcgisDataLayerRef.current) {
-        arcgisDataLayerRef.current.setMap(null);
-        arcgisDataLayerRef.current = null;
-      }
-      return;
-    }
-    const dataLayer = new google.maps.Data({ map });
-    arcgisDataLayerRef.current = dataLayer;
-    dataLayer.setStyle((feature) => {
-      const score = feature.getProperty('safety_score') ?? feature.getProperty('SafetyIndex') ?? 0.5;
-      const green = Math.round(score * 255);
-      const red = Math.round((1 - score) * 255);
-      return {
-        fillColor: `rgb(${red},${green},100)`,
-        fillOpacity: 0.35,
-        strokeWeight: 1,
-        strokeColor: '#333',
-      };
-    });
-    let cancelled = false;
-    fetch(ARCGIS_SAFETY_GEOJSON_URL)
-      .then((r) => r.json())
-      .then((geojson) => {
-        if (!cancelled && arcgisDataLayerRef.current === dataLayer) dataLayer.addGeoJson(geojson);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-      dataLayer.setMap(null);
-      if (arcgisDataLayerRef.current === dataLayer) arcgisDataLayerRef.current = null;
-    };
-  }, [map, showHeatmap, safetyLayerMode]);
+
 
   // Police & Fire markers
   useEffect(() => {
@@ -242,7 +207,7 @@ function RouteAndLayers() {
 
 export default function GoogleMapView() {
   const [map, setMap] = useState<google.maps.Map | null>(null);
-  const { origin, destination, setRouteResult, safetyLayerMode } = useMapStore();
+  const { origin, destination, originQuery, destinationQuery, setRouteResult } = useMapStore();
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   const { isLoaded, loadError } = useJsApiLoader({
@@ -257,41 +222,61 @@ export default function GoogleMapView() {
   const onLoad = useCallback((mapInstance: google.maps.Map) => setMap(mapInstance), []);
   const onUnmount = useCallback(() => setMap(null), []);
 
-  // Fetch directions (walking only) when origin and destination are set
+  // Fetch walking directions when origin and destination are set
   useEffect(() => {
     if (!map || !origin || !destination || !apiKey) return;
 
     const service = new google.maps.DirectionsService();
-    const originLatLng = new google.maps.LatLng(origin.lat, origin.lng);
-    const destLatLng = new google.maps.LatLng(destination.lat, destination.lng);
+
+    // Use the original query text if available (like normal Google Maps),
+    // otherwise fall back to lat/lng coordinates
+    const originParam: string | google.maps.LatLng = originQuery.trim()
+      ? originQuery.trim()
+      : new google.maps.LatLng(origin.lat, origin.lng);
+    const destParam: string | google.maps.LatLng = destinationQuery.trim()
+      ? destinationQuery.trim()
+      : new google.maps.LatLng(destination.lat, destination.lng);
 
     service.route(
       {
-        origin: originLatLng,
-        destination: destLatLng,
+        origin: originParam,
+        destination: destParam,
         travelMode: google.maps.TravelMode.WALKING,
+        provideRouteAlternatives: true,
       },
       (result, status) => {
-        if (status !== google.maps.DirectionsStatus.OK || !result.routes?.[0]) {
+        if (status !== google.maps.DirectionsStatus.OK || !result?.routes?.length) {
           setRouteResult(null);
           return;
         }
-        const route = result.routes[0];
-        const leg = route.legs[0];
-        const path = route.overview_path || [];
-        const polyline = path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
-        const duration = leg.duration?.text ?? '';
-        const distance = leg.distance?.text ?? '';
 
-        // Same path for fastest and safest; score depends on active safety layer
-        const score = safetyLayerMode === 'crime' ? 'B+' : 'A';
+        // Helper to extract route data from a DirectionsRoute
+        const extractRoute = (route: google.maps.DirectionsRoute) => {
+          const leg = route.legs[0];
+          const path = route.overview_path || [];
+          const polyline = path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
+          const duration = leg.duration?.text ?? '';
+          const distance = leg.distance?.text ?? '';
+          const durationSeconds = leg.duration?.value ?? 0;
+          return { polyline, duration, distance, durationSeconds };
+        };
+
+        // Sort routes by duration to find fastest vs longest (safest avoids shortcuts)
+        const parsed = result.routes.map(extractRoute);
+        parsed.sort((a, b) => a.durationSeconds - b.durationSeconds);
+
+        const fastest = parsed[0];
+        // Use the longest alternative as "safest" (tends to stick to main roads);
+        // if there's only one route, use it for both
+        const safest = parsed.length > 1 ? parsed[parsed.length - 1] : parsed[0];
+
         setRouteResult({
-          fastest: { polyline, duration, distance },
-          safest: { polyline, duration, distance, score },
+          fastest: { polyline: fastest.polyline, duration: fastest.duration, distance: fastest.distance },
+          safest: { polyline: safest.polyline, duration: safest.duration, distance: safest.distance, score: 'B+' },
         });
       }
     );
-  }, [map, origin, destination, apiKey, setRouteResult, safetyLayerMode]);
+  }, [map, origin, destination, originQuery, destinationQuery, apiKey, setRouteResult]);
 
   if (loadError) {
     return (

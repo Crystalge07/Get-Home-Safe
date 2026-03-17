@@ -2,9 +2,6 @@ import { create } from 'zustand';
 
 export type RouteMode = 'fastest' | 'safest' | 'balanced';
 
-/** Which safety data source is active for heatmap and route scoring */
-export type SafetyLayerMode = 'crime' | 'general';
-
 interface MapState {
   routeMode: RouteMode;
   setRouteMode: (mode: RouteMode) => void;
@@ -21,9 +18,7 @@ interface MapState {
   showSafeAreas: boolean;
   toggleSafeAreas: () => void;
 
-  /** Safety layer: crime-based vs general (ArcGIS) index */
-  safetyLayerMode: SafetyLayerMode;
-  setSafetyLayerMode: (mode: SafetyLayerMode) => void;
+
 
   walkMeHomeActive: boolean;
   setWalkMeHome: (v: boolean) => void;
@@ -72,8 +67,7 @@ export const useMapStore = create<MapState>((set) => ({
   showSafeAreas: false,
   toggleSafeAreas: () => set((s) => ({ showSafeAreas: !s.showSafeAreas })),
 
-  safetyLayerMode: 'crime',
-  setSafetyLayerMode: (mode) => set({ safetyLayerMode: mode }),
+
 
   walkMeHomeActive: false,
   setWalkMeHome: (v) => set({ walkMeHomeActive: v }),

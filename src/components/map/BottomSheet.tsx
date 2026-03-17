@@ -3,7 +3,6 @@ import { useMapStore } from '@/store/useMapStore';
 import { Search } from 'lucide-react';
 import RouteCards from './RouteCards';
 import { useRef, useState, useEffect } from 'react';
-import type { SafetyLayerMode } from '@/store/useMapStore';
 
 const SNAP_POINTS = { collapsed: 72, mid: 380, full: 560 };
 
@@ -15,35 +14,13 @@ const BottomSheet = () => {
     setDestinationQuery,
     setOrigin,
     setDestination,
-    safetyLayerMode,
-    setSafetyLayerMode,
     mapsLoaded,
   } = useMapStore();
   const [sheetHeight, setSheetHeight] = useState(SNAP_POINTS.mid);
-  const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const dragControls = useDragControls();
   const y = useMotionValue(0);
   const originInputRef = useRef<HTMLInputElement>(null);
   const destInputRef = useRef<HTMLInputElement>(null);
-
-  const handleGetRoute = () => {
-    if (!mapsLoaded || typeof google === 'undefined') return;
-    setGeocodeError(null);
-    const geocoder = new google.maps.Geocoder();
-    const geocode = (address: string): Promise<{ lat: number; lng: number } | null> =>
-      new Promise((resolve) => {
-        geocoder.geocode({ address }, (results: google.maps.GeocoderResult[] | null) => {
-          if (results?.[0]?.geometry?.location) {
-            resolve({ lat: results[0].geometry!.location!.lat(), lng: results[0].geometry!.location!.lng() });
-          } else resolve(null);
-        });
-      });
-    Promise.all([geocode(originQuery.trim()), geocode(destinationQuery.trim())]).then(([o, d]) => {
-      if (o) setOrigin(o);
-      if (d) setDestination(d);
-      if (!o || !d) setGeocodeError('Could not find one or both addresses. Try selecting from suggestions.');
-    });
-  };
 
   // Attach Places Autocomplete when script is loaded
   useEffect(() => {
@@ -51,22 +28,32 @@ const BottomSheet = () => {
     const o = originInputRef.current;
     const d = destInputRef.current;
     if (!o || !d) return;
-    const a1 = new google.maps.places.Autocomplete(o, { types: ['geocode'] });
-    const a2 = new google.maps.places.Autocomplete(d, { types: ['geocode'] });
+    const autocompleteOptions = {
+      types: ['establishment', 'geocode'],
+      fields: ['geometry', 'formatted_address', 'name'],
+    };
+    const a1 = new google.maps.places.Autocomplete(o, autocompleteOptions);
+    const a2 = new google.maps.places.Autocomplete(d, autocompleteOptions);
     a1.addListener('place_changed', () => {
       const place = a1.getPlace();
       const loc = place.geometry?.location;
       if (loc) {
-        setOrigin({ lat: loc.lat(), lng: loc.lng(), label: place.formatted_address ?? undefined });
-        setOriginQuery(place.formatted_address ?? '');
+        const label = place.name
+          ? `${place.name}, ${place.formatted_address ?? ''}`
+          : (place.formatted_address ?? '');
+        setOrigin({ lat: loc.lat(), lng: loc.lng(), label });
+        setOriginQuery(o.value);
       }
     });
     a2.addListener('place_changed', () => {
       const place = a2.getPlace();
       const loc = place.geometry?.location;
       if (loc) {
-        setDestination({ lat: loc.lat(), lng: loc.lng(), label: place.formatted_address ?? undefined });
-        setDestinationQuery(place.formatted_address ?? '');
+        const label = place.name
+          ? `${place.name}, ${place.formatted_address ?? ''}`
+          : (place.formatted_address ?? '');
+        setDestination({ lat: loc.lat(), lng: loc.lng(), label });
+        setDestinationQuery(d.value);
       }
     });
     return () => {
@@ -98,11 +85,6 @@ const BottomSheet = () => {
     else if (sheetHeight === SNAP_POINTS.mid) setSheetHeight(SNAP_POINTS.full);
   };
 
-  const safetyModes: { key: SafetyLayerMode; label: string }[] = [
-    { key: 'crime', label: 'Crime-based safety' },
-    { key: 'general', label: 'General safety index' },
-  ];
-
   return (
     <motion.div
       className="fixed bottom-0 left-0 right-0 z-[1000] bg-card rounded-t-2xl sheet-shadow overflow-hidden"
@@ -130,7 +112,7 @@ const BottomSheet = () => {
             ref={originInputRef}
             type="text"
             placeholder="Starting location"
-            value={originQuery}
+            defaultValue={originQuery}
             onChange={(e) => setOriginQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-secondary rounded-xl text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-shadow"
             onFocus={() => setSheetHeight(SNAP_POINTS.full)}
@@ -143,41 +125,11 @@ const BottomSheet = () => {
             ref={destInputRef}
             type="text"
             placeholder="Destination"
-            value={destinationQuery}
+            defaultValue={destinationQuery}
             onChange={(e) => setDestinationQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-secondary rounded-xl text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-shadow"
             onFocus={() => setSheetHeight(SNAP_POINTS.full)}
           />
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGetRoute}
-          disabled={!originQuery.trim() || !destinationQuery.trim()}
-          className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium disabled:opacity-50 disabled:pointer-events-none"
-        >
-          Get route (walking)
-        </button>
-        {geocodeError && <p className="text-xs text-destructive">{geocodeError}</p>}
-
-        {/* Safety layer toggle: Crime-based vs General safety index */}
-        <div className="space-y-1.5">
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Safety data</p>
-          <div className="flex gap-1.5 p-1 bg-secondary rounded-xl">
-            {safetyModes.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setSafetyLayerMode(key)}
-                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
-                  safetyLayerMode === key
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
 
         <RouteCards />
