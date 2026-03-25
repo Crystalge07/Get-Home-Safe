@@ -44,7 +44,7 @@ const RouteCards = () => {
           <button
             key={key}
             onClick={() => setRouteMode(key)}
-            className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 text-left ${
+            className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 text-left border border-white/20 ring-1 ring-white/10 hover:border-white/30 hover:ring-white/20 ${
               isActive
                 ? 'bg-primary/8 ring-1 ring-primary/20'
                 : 'bg-secondary/50 hover:bg-secondary'
@@ -69,7 +69,7 @@ const RouteCards = () => {
         );
       })}
 
-      <button className="w-full py-3 mt-1 bg-primary text-primary-foreground rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-90 active:scale-[0.98]">
+      <button className="w-full py-3 mt-1 bg-primary text-primary-foreground rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-90 active:scale-[0.98] border border-white/20 ring-1 ring-white/10 hover:border-white/30 hover:ring-white/20">
         Start Walk
       </button>
     </div>

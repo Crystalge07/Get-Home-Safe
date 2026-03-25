@@ -96,7 +96,7 @@ const BottomSheet = () => {
 
   return (
     <motion.div
-      className="fixed bottom-0 left-0 right-0 z-[1000] bg-card rounded-t-2xl sheet-shadow overflow-hidden"
+      className="fixed bottom-0 left-0 right-0 z-[1000] bg-card rounded-t-2xl sheet-shadow overflow-hidden border border-white/20 ring-1 ring-white/10"
       animate={{ height: sheetHeight }}
       transition={{ type: 'spring', stiffness: 400, damping: 35 }}
     >
@@ -122,7 +122,7 @@ const BottomSheet = () => {
             placeholder="Starting location"
             defaultValue={originQuery}
             onChange={(e) => setOriginQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-secondary rounded-xl text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-shadow"
+            className="w-full pl-10 pr-4 py-2.5 bg-secondary rounded-xl text-sm text-foreground placeholder:text-muted-foreground outline-none border border-white/20 ring-1 ring-white/10 focus:ring-2 focus:ring-primary/30 transition-shadow"
             onFocus={() => setSheetHeight(SNAP_POINTS.full)}
           />
         </div>
@@ -135,7 +135,7 @@ const BottomSheet = () => {
             placeholder="Destination"
             defaultValue={destinationQuery}
             onChange={(e) => setDestinationQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-secondary rounded-xl text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-shadow"
+            className="w-full pl-10 pr-4 py-2.5 bg-secondary rounded-xl text-sm text-foreground placeholder:text-muted-foreground outline-none border border-white/20 ring-1 ring-white/10 focus:ring-2 focus:ring-primary/30 transition-shadow"
             onFocus={() => setSheetHeight(SNAP_POINTS.full)}
           />
         </div>
