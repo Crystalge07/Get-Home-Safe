@@ -5,6 +5,12 @@ import RouteCards from './RouteCards';
 import { useRef, useState, useEffect } from 'react';
 
 const SNAP_POINTS = { collapsed: 72, mid: 200, full: 440 };
+const GTA_BOUNDS = {
+  south: 43.2,
+  west: -80.15,
+  north: 44.45,
+  east: -78.7,
+};
 
 const BottomSheet = () => {
   const {
@@ -28,9 +34,12 @@ const BottomSheet = () => {
     const o = originInputRef.current;
     const d = destInputRef.current;
     if (!o || !d) return;
-    const autocompleteOptions = {
+    const autocompleteOptions: google.maps.places.AutocompleteOptions = {
       types: ['establishment', 'geocode'],
       fields: ['geometry', 'formatted_address', 'name'],
+      bounds: GTA_BOUNDS,
+      strictBounds: true,
+      componentRestrictions: { country: 'ca' },
     };
     const a1 = new google.maps.places.Autocomplete(o, autocompleteOptions);
     const a2 = new google.maps.places.Autocomplete(d, autocompleteOptions);
@@ -105,7 +114,6 @@ const BottomSheet = () => {
       </motion.div>
 
       <div className="px-4 pb-4 space-y-3 overflow-y-auto" style={{ maxHeight: sheetHeight - 40 }}>
-        {/* Origin */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
@@ -118,7 +126,7 @@ const BottomSheet = () => {
             onFocus={() => setSheetHeight(SNAP_POINTS.full)}
           />
         </div>
-        {/* Destination */}
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input

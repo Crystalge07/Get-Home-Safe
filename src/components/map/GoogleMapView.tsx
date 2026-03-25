@@ -2,12 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJsApiLoader, GoogleMap, useGoogleMap } from '@react-google-maps/api';
 import { useMapStore } from '@/store/useMapStore';
 
-
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
-const DEFAULT_CENTER = { lat: 40.753, lng: -73.979 };
-const DEFAULT_ZOOM = 15;
+const DEFAULT_CENTER = { lat: 43.6532, lng: -79.3832 };
+const DEFAULT_ZOOM = 11;
+const LIBRARIES: ('places')[] = ['places'];
 
-const LIBRARIES: ('places' | 'visualization')[] = ['places', 'visualization'];
+const GTA_BOUNDS = {
+  north: 44.45,
+  south: 43.2,
+  west: -80.15,
+  east: -78.7,
+};
+
+const TPS_NEIGHBOURHOOD_CRIME_RATES_URL =
+  'https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/Neighbourhood_Crime_Rates_Open_Data/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson';
 
 /** Dark map style for Google Maps */
 const DARK_MAP_STYLES: google.maps.MapTypeStyle[] = [
@@ -15,64 +23,59 @@ const DARK_MAP_STYLES: google.maps.MapTypeStyle[] = [
   { elementType: 'labels.text.stroke', stylers: [{ color: '#1d1d1d' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#2d2d2d' }] },
-  { featureType: 'administrative.country', elementType: 'labels.text.fill', stylers: [{ color: '#9e9e9e' }] },
-  { featureType: 'administrative.land_parcel', stylers: [{ color: '#2d2d2d' }] },
   { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#bdbdbd' }] },
   { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#2d2d2d' }] },
   { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#2d2d2d' }] },
   { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
-  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#383838' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3c3c3c' }] },
-  { featureType: 'road.highway.controlled_access', elementType: 'geometry', stylers: [{ color: '#4e4e4e' }] },
-  { featureType: 'road.local', elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
-  { featureType: 'transit', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#3d3d3d' }] },
-];
-
-/** Crime points for heatmap (can be replaced by SpotCrime API or open data) */
-const CRIME_POINTS = [
-  { lat: 40.7545, lng: -73.984, weight: 0.9 },
-  { lat: 40.752, lng: -73.978, weight: 0.7 },
-  { lat: 40.75, lng: -73.975, weight: 0.5 },
-  { lat: 40.757, lng: -73.981, weight: 0.3 },
-  { lat: 40.749, lng: -73.982, weight: 0.8 },
-  { lat: 40.7555, lng: -73.977, weight: 0.6 },
-  { lat: 40.753, lng: -73.986, weight: 0.4 },
-  { lat: 40.7475, lng: -73.971, weight: 0.7 },
-  { lat: 40.751, lng: -73.969, weight: 0.5 },
-  { lat: 40.7565, lng: -73.99, weight: 0.3 },
 ];
 
 const POLICE_FIRE_MARKERS = [
-  { lat: 40.755, lng: -73.984, type: 'hospital' as const, name: 'NYU Langone' },
-  { lat: 40.748, lng: -73.972, type: 'police' as const, name: 'NYPD 14th Precinct' },
-  { lat: 40.752, lng: -73.988, type: 'fire' as const, name: 'FDNY Engine 54' },
+  { lat: 43.6546, lng: -79.4014, type: 'police' as const, name: 'Toronto Police 52 Division' },
+  { lat: 43.6518, lng: -79.3817, type: 'fire' as const, name: 'Toronto Fire Station 332' },
+  { lat: 43.6577, lng: -79.3892, type: 'hospital' as const, name: 'Toronto General Hospital' },
 ];
 
 const SAFE_AREAS_24_7 = [
-  { lat: 40.7495, lng: -73.98, type: 'pharmacy' as const, name: 'CVS 24hr' },
-  { lat: 40.754, lng: -73.981, type: 'hospital' as const, name: 'Emergency' },
-  { lat: 40.747, lng: -73.976, type: 'business' as const, name: '24/7 Diner' },
+  { lat: 43.6489, lng: -79.3816, type: 'pharmacy' as const, name: 'Shoppers Drug Mart (24h)' },
+  { lat: 43.6581, lng: -79.3872, type: 'hospital' as const, name: 'SickKids Emergency' },
+  { lat: 43.6426, lng: -79.3871, type: 'business' as const, name: '24/7 Convenience' },
 ];
+
+const getAssaultRate = (feature: google.maps.Data.Feature): number => {
+  const value = feature.getProperty('ASSAULT_RATE_2025');
+  const rate = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(rate) ? rate : 0;
+};
+
+const getNeighbourhoodName = (feature: google.maps.Data.Feature): string => {
+  const value =
+    feature.getProperty('AREA_NAME') ??
+    feature.getProperty('NEIGHBOURHOOD_158') ??
+    feature.getProperty('NEIGHBOURHOOD') ??
+    'Unknown neighbourhood';
+  return String(value);
+};
+
+const getChoroplethColor = (assaultRate: number): string => {
+  if (assaultRate >= 1000) return '#7d0c0c';
+  if (assaultRate >= 750) return '#b83025';
+  if (assaultRate >= 500) return '#d4614a';
+  if (assaultRate >= 250) return '#e8a882';
+  if (assaultRate >= 196) return '#f7e0d0';
+  return '#f7e0d0';
+};
 
 function RouteAndLayers() {
   const map = useGoogleMap();
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
   const routeMarkersRef = useRef<google.maps.Marker[]>([]);
-  const heatmapRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
-
+  const choroplethLayerRef = useRef<google.maps.Data | null>(null);
+  const tooltipRef = useRef<google.maps.InfoWindow | null>(null);
   const policeFireMarkersRef = useRef<google.maps.Marker[]>([]);
   const safeAreasMarkersRef = useRef<google.maps.Marker[]>([]);
 
-  const {
-    routeResult,
-    routeMode,
-    showHeatmap,
-    showPoliceFire,
-    showSafeAreas,
-  } = useMapStore();
+  const { routeResult, routeMode, showHeatmap, showPoliceFire, showSafeAreas } = useMapStore();
 
   // Route polyline (walking route)
   useEffect(() => {
@@ -96,10 +99,9 @@ function RouteAndLayers() {
       strokeOpacity: 0.9,
       strokeWeight: 5,
     });
-    const start = path[0];
-    const end = path[path.length - 1];
+
     const startMarker = new google.maps.Marker({
-      position: start,
+      position: path[0],
       map,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
@@ -111,7 +113,7 @@ function RouteAndLayers() {
       },
     });
     const endMarker = new google.maps.Marker({
-      position: end,
+      position: path[path.length - 1],
       map,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
@@ -123,36 +125,81 @@ function RouteAndLayers() {
       },
     });
     routeMarkersRef.current = [startMarker, endMarker];
+
     const bounds = new google.maps.LatLngBounds();
     path.forEach((p) => bounds.extend(p));
     map.fitBounds(bounds);
   }, [map, routeResult, routeMode]);
 
-  // Crime heatmap overlay
+  // TPS neighbourhood choropleth overlay (replaces HeatmapLayer)
   useEffect(() => {
-    if (!map || !showHeatmap) {
-      if (heatmapRef.current) {
-        heatmapRef.current.setMap(null);
-        heatmapRef.current = null;
+    if (!map) return;
+
+    if (!showHeatmap) {
+      if (choroplethLayerRef.current) {
+        choroplethLayerRef.current.setMap(null);
+        choroplethLayerRef.current = null;
       }
+      tooltipRef.current?.close();
       return;
     }
-    if (!heatmapRef.current) {
-      heatmapRef.current = new google.maps.visualization.HeatmapLayer({
-        data: CRIME_POINTS.map((p) => ({
-          location: new google.maps.LatLng(p.lat, p.lng),
-          weight: p.weight,
-        })),
-        map,
-        opacity: 0.6,
-        radius: 25,
-      });
-    } else {
-      heatmapRef.current.setMap(map);
-    }
+
+    let cancelled = false;
+    let mouseOverListener: google.maps.MapsEventListener | null = null;
+    let mouseOutListener: google.maps.MapsEventListener | null = null;
+
+    const loadChoropleth = async () => {
+      try {
+        const geojson = await fetch(TPS_NEIGHBOURHOOD_CRIME_RATES_URL).then((r) => (r.ok ? r.json() : null));
+        if (!geojson || cancelled) return;
+
+        if (choroplethLayerRef.current) {
+          choroplethLayerRef.current.setMap(null);
+          choroplethLayerRef.current = null;
+        }
+
+        const layer = new google.maps.Data({ map });
+        choroplethLayerRef.current = layer;
+        layer.addGeoJson(geojson);
+
+        layer.setStyle((feature) => {
+          const assaultRate = getAssaultRate(feature);
+          return {
+            fillColor: getChoroplethColor(assaultRate),
+            fillOpacity: 0.7,
+            strokeColor: '#ffffff',
+            strokeWeight: 1,
+            strokeOpacity: 0.4,
+          };
+        });
+
+        tooltipRef.current = tooltipRef.current ?? new google.maps.InfoWindow();
+
+        mouseOverListener = layer.addListener('mouseover', (event: any) => {
+          const neighbourhood = getNeighbourhoodName(event.feature);
+          const assaultRate = getAssaultRate(event.feature);
+          tooltipRef.current?.setContent(
+            `<div style=\"padding:6px 8px\"><strong>${neighbourhood}</strong><br/>Assault rate (2025): ${assaultRate.toLocaleString()}</div>`
+          );
+          tooltipRef.current?.setPosition(event.latLng);
+          tooltipRef.current?.open(map);
+        });
+
+        mouseOutListener = layer.addListener('mouseout', () => {
+          tooltipRef.current?.close();
+        });
+      } catch {
+        // Keep map usable if external data fails.
+      }
+    };
+
+    loadChoropleth();
+    return () => {
+      cancelled = true;
+      if (mouseOverListener) google.maps.event.removeListener(mouseOverListener);
+      if (mouseOutListener) google.maps.event.removeListener(mouseOutListener);
+    };
   }, [map, showHeatmap]);
-
-
 
   // Police & Fire markers
   useEffect(() => {
@@ -160,6 +207,7 @@ function RouteAndLayers() {
     policeFireMarkersRef.current.forEach((m) => m.setMap(null));
     policeFireMarkersRef.current = [];
     if (!showPoliceFire) return;
+
     POLICE_FIRE_MARKERS.forEach((m) => {
       const marker = new google.maps.Marker({
         position: { lat: m.lat, lng: m.lng },
@@ -184,6 +232,7 @@ function RouteAndLayers() {
     safeAreasMarkersRef.current.forEach((m) => m.setMap(null));
     safeAreasMarkersRef.current = [];
     if (!showSafeAreas) return;
+
     SAFE_AREAS_24_7.forEach((m) => {
       const marker = new google.maps.Marker({
         position: { lat: m.lat, lng: m.lng },
@@ -227,9 +276,6 @@ export default function GoogleMapView() {
     if (!map || !origin || !destination || !apiKey) return;
 
     const service = new google.maps.DirectionsService();
-
-    // Use the original query text if available (like normal Google Maps),
-    // otherwise fall back to lat/lng coordinates
     const originParam: string | google.maps.LatLng = originQuery.trim()
       ? originQuery.trim()
       : new google.maps.LatLng(origin.lat, origin.lng);
@@ -250,7 +296,6 @@ export default function GoogleMapView() {
           return;
         }
 
-        // Helper to extract route data from a DirectionsRoute
         const extractRoute = (route: google.maps.DirectionsRoute) => {
           const leg = route.legs[0];
           const path = route.overview_path || [];
@@ -261,13 +306,10 @@ export default function GoogleMapView() {
           return { polyline, duration, distance, durationSeconds };
         };
 
-        // Sort routes by duration to find fastest vs longest (safest avoids shortcuts)
         const parsed = result.routes.map(extractRoute);
         parsed.sort((a, b) => a.durationSeconds - b.durationSeconds);
 
         const fastest = parsed[0];
-        // Use the longest alternative as "safest" (tends to stick to main roads);
-        // if there's only one route, use it for both
         const safest = parsed.length > 1 ? parsed[parsed.length - 1] : parsed[0];
 
         setRouteResult({
@@ -288,7 +330,7 @@ export default function GoogleMapView() {
   if (!isLoaded) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-muted text-muted-foreground">
-        Loading map…
+        Loading map...
       </div>
     );
   }
@@ -308,6 +350,7 @@ export default function GoogleMapView() {
         fullscreenControl: true,
         scaleControl: true,
         styles: DARK_MAP_STYLES,
+        restriction: { latLngBounds: GTA_BOUNDS, strictBounds: true },
       }}
     >
       <RouteAndLayers />
