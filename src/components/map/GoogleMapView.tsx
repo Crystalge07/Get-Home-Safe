@@ -30,18 +30,6 @@ const DARK_MAP_STYLES: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
 ];
 
-const FALLBACK_POLICE_FIRE_MARKERS = [
-  { lat: 43.6546, lng: -79.4014, name: 'Toronto Police 52 Division', category: 'POLICE' as const },
-  { lat: 43.6518, lng: -79.3817, name: 'Toronto Fire Station 332', category: 'FIRE_STATION' as const },
-  { lat: 43.6577, lng: -79.3892, name: 'Toronto General Hospital', category: 'HOSPITAL' as const },
-];
-
-const FALLBACK_SAFE_AREAS_24_7 = [
-  { lat: 43.6489, lng: -79.3816, name: 'Shoppers Drug Mart (24h)', category: 'SAFE_SPACE' as const },
-  { lat: 43.6581, lng: -79.3872, name: 'SickKids Emergency', category: 'SAFE_SPACE' as const },
-  { lat: 43.6426, lng: -79.3871, name: '24/7 Convenience', category: 'SAFE_SPACE' as const },
-];
-
 type SafetyCategory = 'POLICE' | 'FIRE_STATION' | 'HOSPITAL' | 'SAFE_SPACE';
 type SafetyMarker = { lat: number; lng: number; name: string; category: SafetyCategory };
 type BoundsLike = { north: number; south: number; east: number; west: number };
@@ -136,6 +124,7 @@ function RouteAndLayers() {
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
   const routeMarkersRef = useRef<google.maps.Marker[]>([]);
   const choroplethLayerRef = useRef<google.maps.Data | null>(null);
+  const choroplethFeaturesLoadedRef = useRef(false);
   const tooltipRef = useRef<{
     setContent: (title: string, subtitle: string) => void;
     setPosition: (latLng: google.maps.LatLng) => void;
@@ -145,8 +134,8 @@ function RouteAndLayers() {
   } | null>(null);
   const policeFireMarkersRef = useRef<google.maps.Marker[]>([]);
   const safeAreasMarkersRef = useRef<google.maps.Marker[]>([]);
-  const [authoritiesLocations, setAuthoritiesLocations] = useState<SafetyMarker[]>(FALLBACK_POLICE_FIRE_MARKERS);
-  const [safeSpaceLocations, setSafeSpaceLocations] = useState<SafetyMarker[]>(FALLBACK_SAFE_AREAS_24_7);
+  const [authoritiesLocations, setAuthoritiesLocations] = useState<SafetyMarker[]>([]);
+  const [safeSpaceLocations, setSafeSpaceLocations] = useState<SafetyMarker[]>([]);
   const [heatmapCoverageBounds, setHeatmapCoverageBounds] = useState<BoundsLike | null>(null);
   const [heatmapCoveragePolygons, setHeatmapCoveragePolygons] = useState<PolygonRing[]>([]);
 
@@ -155,6 +144,12 @@ function RouteAndLayers() {
   // Fetch GTA-wide safety markers (police, fire, hospitals, and 24/7 safe spaces)
   useEffect(() => {
     if (!map || typeof google === 'undefined' || !google.maps.places) return;
+    // Never show markers until exact choropleth polygons are loaded.
+    if (heatmapCoveragePolygons.length === 0) {
+      setAuthoritiesLocations([]);
+      setSafeSpaceLocations([]);
+      return;
+    }
     let cancelled = false;
     const service = new google.maps.places.PlacesService(map);
     const activeBounds = heatmapCoverageBounds ?? GTA_BOUNDS;
@@ -184,14 +179,7 @@ function RouteAndLayers() {
         service.textSearch(request, handle);
       });
 
-    const inBounds = (lat: number, lng: number) =>
-      lat >= activeBounds.south &&
-      lat <= activeBounds.north &&
-      lng >= activeBounds.west &&
-      lng <= activeBounds.east;
-
     const inHeatmapArea = (lat: number, lng: number) => {
-      if (heatmapCoveragePolygons.length === 0) return inBounds(lat, lng);
       return heatmapCoveragePolygons.some((ring) => pointInRing(lat, lng, ring));
     };
 
@@ -266,7 +254,7 @@ function RouteAndLayers() {
         if (authorities.length > 0) setAuthoritiesLocations(authorities);
         if (safeSpaces.length > 0) setSafeSpaceLocations(safeSpaces);
       } catch {
-        // Keep fallbacks if live Places fetch fails.
+        // Keep map usable if live Places fetch fails.
       }
     })();
 
@@ -407,76 +395,71 @@ function RouteAndLayers() {
   useEffect(() => {
     if (!map) return;
 
-    if (!showHeatmap) {
-      if (choroplethLayerRef.current) {
-        choroplethLayerRef.current.setMap(null);
-        choroplethLayerRef.current = null;
-      }
-      tooltipRef.current?.hide();
-      return;
-    }
-
     let cancelled = false;
     let mouseOverListener: google.maps.MapsEventListener | null = null;
+    let mouseMoveListener: google.maps.MapsEventListener | null = null;
     let mouseOutListener: google.maps.MapsEventListener | null = null;
 
     const loadChoropleth = async () => {
       try {
-        const geojson = await fetch(TPS_NEIGHBOURHOOD_CRIME_RATES_URL).then((r) => (r.ok ? r.json() : null));
-        if (!geojson || cancelled) return;
+        if (!choroplethLayerRef.current) {
+          const layer = new google.maps.Data();
+          choroplethLayerRef.current = layer;
+        }
+        const layer = choroplethLayerRef.current;
+        if (!layer) return;
 
-        // Build tight coverage bounds from choropleth polygons so markers stay within heatmap area.
-        const bounds = new google.maps.LatLngBounds();
-        let hasPoint = false;
-        const polygonRings: PolygonRing[] = [];
-        const scanCoords = (coords: any) => {
-          if (!Array.isArray(coords)) return;
-          if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-            // GeoJSON order: [lng, lat]
-            bounds.extend(new google.maps.LatLng(coords[1], coords[0]));
-            hasPoint = true;
-            return;
-          }
-          coords.forEach(scanCoords);
-        };
-        const collectRings = (geometry: any) => {
-          if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) return;
-          if (geometry.type === 'Polygon') {
-            const outer = geometry.coordinates[0];
-            if (Array.isArray(outer) && outer.length >= 3) polygonRings.push(outer as PolygonRing);
-            return;
-          }
-          if (geometry.type === 'MultiPolygon') {
-            geometry.coordinates.forEach((poly: any) => {
-              const outer = poly?.[0];
+        if (!choroplethFeaturesLoadedRef.current) {
+          const geojson = await fetch(TPS_NEIGHBOURHOOD_CRIME_RATES_URL).then((r) => (r.ok ? r.json() : null));
+          if (!geojson || cancelled) return;
+
+          // Build tight coverage bounds from choropleth polygons so markers stay within heatmap area.
+          const bounds = new google.maps.LatLngBounds();
+          let hasPoint = false;
+          const polygonRings: PolygonRing[] = [];
+          const scanCoords = (coords: any) => {
+            if (!Array.isArray(coords)) return;
+            if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+              // GeoJSON order: [lng, lat]
+              bounds.extend(new google.maps.LatLng(coords[1], coords[0]));
+              hasPoint = true;
+              return;
+            }
+            coords.forEach(scanCoords);
+          };
+          const collectRings = (geometry: any) => {
+            if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) return;
+            if (geometry.type === 'Polygon') {
+              const outer = geometry.coordinates[0];
               if (Array.isArray(outer) && outer.length >= 3) polygonRings.push(outer as PolygonRing);
-            });
-          }
-        };
-        (geojson.features ?? []).forEach((feature: any) => {
-          scanCoords(feature?.geometry?.coordinates);
-          collectRings(feature?.geometry);
-        });
-        if (hasPoint) {
-          const ne = bounds.getNorthEast();
-          const sw = bounds.getSouthWest();
-          setHeatmapCoverageBounds({
-            north: ne.lat(),
-            east: ne.lng(),
-            south: sw.lat(),
-            west: sw.lng(),
+              return;
+            }
+            if (geometry.type === 'MultiPolygon') {
+              geometry.coordinates.forEach((poly: any) => {
+                const outer = poly?.[0];
+                if (Array.isArray(outer) && outer.length >= 3) polygonRings.push(outer as PolygonRing);
+              });
+            }
+          };
+          (geojson.features ?? []).forEach((feature: any) => {
+            scanCoords(feature?.geometry?.coordinates);
+            collectRings(feature?.geometry);
           });
-          setHeatmapCoveragePolygons(polygonRings);
-        }
+          if (hasPoint) {
+            const ne = bounds.getNorthEast();
+            const sw = bounds.getSouthWest();
+            setHeatmapCoverageBounds({
+              north: ne.lat(),
+              east: ne.lng(),
+              south: sw.lat(),
+              west: sw.lng(),
+            });
+            setHeatmapCoveragePolygons(polygonRings);
+          }
 
-        if (choroplethLayerRef.current) {
-          choroplethLayerRef.current.setMap(null);
-          choroplethLayerRef.current = null;
+          layer.addGeoJson(geojson);
+          choroplethFeaturesLoadedRef.current = true;
         }
-
-        const layer = new google.maps.Data({ map });
-        choroplethLayerRef.current = layer;
-        layer.addGeoJson(geojson);
 
         layer.setStyle((feature) => {
           const assaultRate = getAssaultRate(feature);
@@ -489,6 +472,12 @@ function RouteAndLayers() {
           };
         });
 
+        layer.setMap(showHeatmap ? map : null);
+        if (!showHeatmap) {
+          tooltipRef.current?.hide();
+          return;
+        }
+
         mouseOverListener = layer.addListener('mouseover', (event: any) => {
           const neighbourhood = getNeighbourhoodName(event.feature);
           const assaultRate = getAssaultRate(event.feature);
@@ -498,7 +487,7 @@ function RouteAndLayers() {
         });
 
         // Follow cursor while moving within polygon.
-        layer.addListener('mousemove', (event: any) => {
+        mouseMoveListener = layer.addListener('mousemove', (event: any) => {
           tooltipRef.current?.setPosition(event.latLng);
         });
 
@@ -514,6 +503,7 @@ function RouteAndLayers() {
     return () => {
       cancelled = true;
       if (mouseOverListener) google.maps.event.removeListener(mouseOverListener);
+      if (mouseMoveListener) google.maps.event.removeListener(mouseMoveListener);
       if (mouseOutListener) google.maps.event.removeListener(mouseOutListener);
     };
   }, [map, showHeatmap]);
