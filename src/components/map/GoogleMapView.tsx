@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useJsApiLoader, GoogleMap, useGoogleMap } from '@react-google-maps/api';
 import { useMapStore } from '@/store/useMapStore';
 
@@ -34,6 +34,15 @@ type SafetyCategory = 'POLICE' | 'FIRE_STATION' | 'HOSPITAL' | 'SAFE_SPACE';
 type SafetyMarker = { lat: number; lng: number; name: string; category: SafetyCategory };
 type BoundsLike = { north: number; south: number; east: number; west: number };
 type PolygonRing = [number, number][]; // [lng, lat]
+type RiskZone = { ring: PolygonRing; assaultRate: number };
+type RouteCandidate = {
+  id: string;
+  polyline: { lat: number; lng: number }[];
+  duration: string;
+  distance: string;
+  durationSeconds: number;
+  safetyScore: number;
+};
 
 const svgDataUri = (svg: string) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 
@@ -119,9 +128,25 @@ const pointInRing = (lat: number, lng: number, ring: PolygonRing): boolean => {
   return inside;
 };
 
+const distanceMeters = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const x =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+};
+
+const routePinSvg =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 28 40"><path d="M14 2C8.2 2 3.5 6.7 3.5 12.5c0 8 10.5 24 10.5 24s10.5-16 10.5-24C24.5 6.7 19.8 2 14 2z" fill="white" stroke="#0f0f0f" stroke-width="1.8"/><circle cx="14" cy="12.5" r="3.2" fill="#111"/></svg>';
+
 function RouteAndLayers() {
   const map = useGoogleMap();
-  const routePolylineRef = useRef<google.maps.Polyline | null>(null);
+  const routePolylinesRef = useRef<Partial<Record<'fastest' | 'balanced' | 'safest', google.maps.Polyline>>>({});
   const routeMarkersRef = useRef<google.maps.Marker[]>([]);
   const choroplethLayerRef = useRef<google.maps.Data | null>(null);
   const choroplethFeaturesLoadedRef = useRef(false);
@@ -138,8 +163,21 @@ function RouteAndLayers() {
   const [safeSpaceLocations, setSafeSpaceLocations] = useState<SafetyMarker[]>([]);
   const [heatmapCoverageBounds, setHeatmapCoverageBounds] = useState<BoundsLike | null>(null);
   const [heatmapCoveragePolygons, setHeatmapCoveragePolygons] = useState<PolygonRing[]>([]);
+  const [riskZones, setRiskZones] = useState<RiskZone[]>([]);
 
-  const { routeResult, routeMode, showHeatmap, showPoliceFire, showSafeAreas } = useMapStore();
+  const {
+    origin,
+    destination,
+    originQuery,
+    destinationQuery,
+    routeResult,
+    routeMode,
+    showHeatmap,
+    showPoliceFire,
+    showSafeAreas,
+    setRouteMode,
+    setRouteResult,
+  } = useMapStore();
 
   // Fetch GTA-wide safety markers (police, fire, hospitals, and 24/7 safe spaces)
   useEffect(() => {
@@ -263,58 +301,64 @@ function RouteAndLayers() {
     };
   }, [map, heatmapCoverageBounds, heatmapCoveragePolygons]);
 
-  // Route polyline (walking route)
+  // Route polylines + custom start/end pins
   useEffect(() => {
     if (!map) return;
-    if (routePolylineRef.current) {
-      routePolylineRef.current.setMap(null);
-      routePolylineRef.current = null;
-    }
+    (Object.values(routePolylinesRef.current) as google.maps.Polyline[]).forEach((line) => line?.setMap(null));
+    routePolylinesRef.current = {};
     routeMarkersRef.current.forEach((m) => m.setMap(null));
     routeMarkersRef.current = [];
     if (!routeResult) return;
 
-    const active = routeMode === 'safest' ? routeResult.safest : routeResult.fastest;
-    if (!active?.polyline?.length) return;
+    const draw = (mode: 'fastest' | 'balanced' | 'safest') => {
+      const route = routeResult[mode];
+      if (!route?.polyline?.length) return;
+      const isActive = routeMode === mode;
+      const path = route.polyline.map((p) => new google.maps.LatLng(p.lat, p.lng));
+      const polyline = new google.maps.Polyline({
+        path,
+        map,
+        zIndex: isActive ? 100 : 10,
+        strokeColor: isActive ? '#1e3a8a' : '#a1a1aa',
+        strokeOpacity: isActive ? 0.95 : 0.4,
+        strokeWeight: isActive ? 6 : 4,
+      });
+      routePolylinesRef.current[mode] = polyline;
+    };
 
-    const path = active.polyline.map((p) => new google.maps.LatLng(p.lat, p.lng));
-    routePolylineRef.current = new google.maps.Polyline({
-      path,
-      map,
-      strokeColor: '#3B82F6',
-      strokeOpacity: 0.9,
-      strokeWeight: 5,
-    });
+    draw('fastest');
+    draw('balanced');
+    draw('safest');
 
+    const anchorRoute = routeResult[routeMode] ?? routeResult.fastest;
+    if (!anchorRoute?.polyline?.length) return;
+    const start = anchorRoute.polyline[0];
+    const end = anchorRoute.polyline[anchorRoute.polyline.length - 1];
     const startMarker = new google.maps.Marker({
-      position: path[0],
+      position: { lat: start.lat, lng: start.lng },
       map,
+      title: 'Starting location',
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: '#3B82F6',
-        fillOpacity: 1,
-        strokeColor: '#fff',
-        strokeWeight: 2,
+        url: svgDataUri(routePinSvg),
+        scaledSize: new google.maps.Size(28, 40),
+        anchor: new google.maps.Point(14, 38),
       },
     });
     const endMarker = new google.maps.Marker({
-      position: path[path.length - 1],
+      position: { lat: end.lat, lng: end.lng },
       map,
+      title: 'Destination',
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: '#10B981',
-        fillOpacity: 1,
-        strokeColor: '#fff',
-        strokeWeight: 2,
+        url: svgDataUri(routePinSvg),
+        scaledSize: new google.maps.Size(28, 40),
+        anchor: new google.maps.Point(14, 38),
       },
     });
     routeMarkersRef.current = [startMarker, endMarker];
 
     const bounds = new google.maps.LatLngBounds();
-    path.forEach((p) => bounds.extend(p));
-    map.fitBounds(bounds);
+    anchorRoute.polyline.forEach((p) => bounds.extend(new google.maps.LatLng(p.lat, p.lng)));
+    if (!bounds.isEmpty()) map.fitBounds(bounds, 72);
   }, [map, routeResult, routeMode]);
 
   // Shared hover tooltip used by choropleth and safety markers
@@ -417,6 +461,7 @@ function RouteAndLayers() {
           const bounds = new google.maps.LatLngBounds();
           let hasPoint = false;
           const polygonRings: PolygonRing[] = [];
+          const nextRiskZones: RiskZone[] = [];
           const scanCoords = (coords: any) => {
             if (!Array.isArray(coords)) return;
             if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
@@ -427,23 +472,32 @@ function RouteAndLayers() {
             }
             coords.forEach(scanCoords);
           };
-          const collectRings = (geometry: any) => {
+          const collectRings = (geometry: any, assaultRate: number) => {
             if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) return;
             if (geometry.type === 'Polygon') {
               const outer = geometry.coordinates[0];
-              if (Array.isArray(outer) && outer.length >= 3) polygonRings.push(outer as PolygonRing);
+              if (Array.isArray(outer) && outer.length >= 3) {
+                const ring = outer as PolygonRing;
+                polygonRings.push(ring);
+                nextRiskZones.push({ ring, assaultRate });
+              }
               return;
             }
             if (geometry.type === 'MultiPolygon') {
               geometry.coordinates.forEach((poly: any) => {
                 const outer = poly?.[0];
-                if (Array.isArray(outer) && outer.length >= 3) polygonRings.push(outer as PolygonRing);
+                if (Array.isArray(outer) && outer.length >= 3) {
+                  const ring = outer as PolygonRing;
+                  polygonRings.push(ring);
+                  nextRiskZones.push({ ring, assaultRate });
+                }
               });
             }
           };
           (geojson.features ?? []).forEach((feature: any) => {
             scanCoords(feature?.geometry?.coordinates);
-            collectRings(feature?.geometry);
+            const rate = Number(feature?.properties?.ASSAULT_RATE_2025);
+            collectRings(feature?.geometry, Number.isFinite(rate) ? rate : 0);
           });
           if (hasPoint) {
             const ne = bounds.getNorthEast();
@@ -455,6 +509,7 @@ function RouteAndLayers() {
               west: sw.lng(),
             });
             setHeatmapCoveragePolygons(polygonRings);
+            setRiskZones(nextRiskZones);
           }
 
           layer.addGeoJson(geojson);
@@ -507,6 +562,122 @@ function RouteAndLayers() {
       if (mouseOutListener) google.maps.event.removeListener(mouseOutListener);
     };
   }, [map, showHeatmap]);
+
+  // Multi-route engine: fastest + safest + balanced
+  useEffect(() => {
+    if (!map || !origin || !destination) {
+      setRouteResult(null);
+      return;
+    }
+    if (typeof google === 'undefined') return;
+
+    const service = new google.maps.DirectionsService();
+    const originParam: string | google.maps.LatLng = originQuery.trim()
+      ? originQuery.trim()
+      : new google.maps.LatLng(origin.lat, origin.lng);
+    const destParam: string | google.maps.LatLng = destinationQuery.trim()
+      ? destinationQuery.trim()
+      : new google.maps.LatLng(destination.lat, destination.lng);
+
+    const sampleEvery = 2;
+    const safePoints = [...authoritiesLocations, ...safeSpaceLocations];
+    const getNearestSafeDistance = (pt: { lat: number; lng: number }) => {
+      if (safePoints.length === 0) return 400;
+      let min = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < safePoints.length; i++) {
+        const d = distanceMeters(pt, safePoints[i]);
+        if (d < min) min = d;
+      }
+      return min;
+    };
+    const getRiskAtPoint = (pt: { lat: number; lng: number }) => {
+      for (let i = 0; i < riskZones.length; i++) {
+        if (pointInRing(pt.lat, pt.lng, riskZones[i].ring)) return riskZones[i].assaultRate;
+      }
+      return 0;
+    };
+
+    const scoreRouteSafety = (polyline: { lat: number; lng: number }[]) => {
+      if (!polyline.length) return 0;
+      let reward = 0;
+      let penalty = 0;
+      for (let i = 0; i < polyline.length; i += sampleEvery) {
+        const point = polyline[i];
+        const safeDist = getNearestSafeDistance(point);
+        reward += Math.max(0, 220 - safeDist) / 220; // reward close safety infrastructure
+        penalty += getRiskAtPoint(point) / 1200; // penalize high assault-rate zones
+      }
+      return reward - penalty;
+    };
+
+    service.route(
+      {
+        origin: originParam,
+        destination: destParam,
+        travelMode: google.maps.TravelMode.WALKING,
+        provideRouteAlternatives: true,
+      },
+      (result, status) => {
+        if (status !== google.maps.DirectionsStatus.OK || !result?.routes?.length) {
+          setRouteResult(null);
+          return;
+        }
+
+        const candidates: RouteCandidate[] = result.routes.map((route) => {
+          const leg = route.legs[0];
+          const polyline = (route.overview_path || []).map((p) => ({ lat: p.lat(), lng: p.lng() }));
+          const durationSeconds = leg.duration?.value ?? 0;
+          const routeId = `${route.summary || ''}-${leg.duration?.value || 0}-${leg.distance?.value || 0}`;
+          return {
+            id: routeId,
+            polyline,
+            duration: leg.duration?.text ?? '',
+            distance: leg.distance?.text ?? '',
+            durationSeconds,
+            safetyScore: scoreRouteSafety(polyline),
+          };
+        });
+        if (!candidates.length) {
+          setRouteResult(null);
+          return;
+        }
+
+        const byTime = [...candidates].sort((a, b) => a.durationSeconds - b.durationSeconds);
+        const fastest = byTime[0];
+        const bySafety = [...candidates].sort((a, b) => b.safetyScore - a.safetyScore);
+        const safest = bySafety[0];
+
+        const fastestTime = Math.max(1, fastest.durationSeconds);
+        const balancedRanked = [...candidates]
+          .sort((a, b) => {
+            const timeCostA = a.durationSeconds / fastestTime;
+            const timeCostB = b.durationSeconds / fastestTime;
+            const safetyCostA = safest.safetyScore - a.safetyScore;
+            const safetyCostB = safest.safetyScore - b.safetyScore;
+            return 0.5 * timeCostA + 0.5 * safetyCostA - (0.5 * timeCostB + 0.5 * safetyCostB);
+          });
+        const balanced = balancedRanked.find((r) => r.id !== safest.id) ?? balancedRanked[0];
+
+        setRouteResult({
+          fastest: { polyline: fastest.polyline, duration: fastest.duration, distance: fastest.distance },
+          balanced: { polyline: balanced.polyline, duration: balanced.duration, distance: balanced.distance },
+          safest: { polyline: safest.polyline, duration: safest.duration, distance: safest.distance },
+        });
+        setRouteMode('fastest');
+      }
+    );
+  }, [
+    map,
+    origin,
+    destination,
+    originQuery,
+    destinationQuery,
+    authoritiesLocations,
+    safeSpaceLocations,
+    riskZones,
+    setRouteResult,
+    setRouteMode,
+  ]);
 
   // Police & Fire markers
   useEffect(() => {
@@ -574,8 +745,7 @@ function RouteAndLayers() {
 }
 
 export default function GoogleMapView() {
-  const [map, setMap] = useState<google.maps.Map | null>(null);
-  const { origin, destination, originQuery, destinationQuery, setRouteResult } = useMapStore();
+  const origin = useMapStore((s) => s.origin);
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   const { isLoaded, loadError } = useJsApiLoader({
@@ -586,58 +756,6 @@ export default function GoogleMapView() {
   useEffect(() => {
     if (isLoaded) setMapsLoaded(true);
   }, [isLoaded, setMapsLoaded]);
-
-  const onLoad = useCallback((mapInstance: google.maps.Map) => setMap(mapInstance), []);
-  const onUnmount = useCallback(() => setMap(null), []);
-
-  // Fetch walking directions when origin and destination are set
-  useEffect(() => {
-    if (!map || !origin || !destination || !apiKey) return;
-
-    const service = new google.maps.DirectionsService();
-    const originParam: string | google.maps.LatLng = originQuery.trim()
-      ? originQuery.trim()
-      : new google.maps.LatLng(origin.lat, origin.lng);
-    const destParam: string | google.maps.LatLng = destinationQuery.trim()
-      ? destinationQuery.trim()
-      : new google.maps.LatLng(destination.lat, destination.lng);
-
-    service.route(
-      {
-        origin: originParam,
-        destination: destParam,
-        travelMode: google.maps.TravelMode.WALKING,
-        provideRouteAlternatives: true,
-      },
-      (result, status) => {
-        if (status !== google.maps.DirectionsStatus.OK || !result?.routes?.length) {
-          setRouteResult(null);
-          return;
-        }
-
-        const extractRoute = (route: google.maps.DirectionsRoute) => {
-          const leg = route.legs[0];
-          const path = route.overview_path || [];
-          const polyline = path.map((p) => ({ lat: p.lat(), lng: p.lng() }));
-          const duration = leg.duration?.text ?? '';
-          const distance = leg.distance?.text ?? '';
-          const durationSeconds = leg.duration?.value ?? 0;
-          return { polyline, duration, distance, durationSeconds };
-        };
-
-        const parsed = result.routes.map(extractRoute);
-        parsed.sort((a, b) => a.durationSeconds - b.durationSeconds);
-
-        const fastest = parsed[0];
-        const safest = parsed.length > 1 ? parsed[parsed.length - 1] : parsed[0];
-
-        setRouteResult({
-          fastest: { polyline: fastest.polyline, duration: fastest.duration, distance: fastest.distance },
-          safest: { polyline: safest.polyline, duration: safest.duration, distance: safest.distance, score: 'B+' },
-        });
-      }
-    );
-  }, [map, origin, destination, originQuery, destinationQuery, apiKey, setRouteResult]);
 
   if (loadError) {
     return (
@@ -659,8 +777,6 @@ export default function GoogleMapView() {
       mapContainerStyle={MAP_CONTAINER_STYLE}
       center={origin ? { lat: origin.lat, lng: origin.lng } : DEFAULT_CENTER}
       zoom={DEFAULT_ZOOM}
-      onLoad={onLoad}
-      onUnmount={onUnmount}
       options={{
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },

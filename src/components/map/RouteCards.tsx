@@ -25,10 +25,10 @@ const RouteCards = () => {
           label: 'Safest Route',
         }
       : DEFAULT_ROUTES.safest,
-    balanced: routeResult?.fastest
+    balanced: routeResult?.balanced
       ? {
-          time: routeResult.fastest.duration,
-          distance: routeResult.fastest.distance,
+          time: routeResult.balanced.duration,
+          distance: routeResult.balanced.distance,
           label: 'Balanced Route',
         }
       : DEFAULT_ROUTES.balanced,
@@ -69,7 +69,7 @@ const RouteCards = () => {
         );
       })}
 
-      <button className="w-full py-3 mt-1 bg-primary text-primary-foreground rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-90 active:scale-[0.98] border border-white/20 ring-1 ring-white/10 hover:border-white/30 hover:ring-white/20">
+      <button className="w-full py-3 mt-1 bg-[#1e3a8a] text-white rounded-xl text-sm font-medium transition-all duration-200 hover:opacity-90 active:scale-[0.98] border border-white/20 ring-1 ring-white/10 hover:border-white/30 hover:ring-white/20">
         Start Walk
       </button>
     </div>

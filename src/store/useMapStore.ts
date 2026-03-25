@@ -45,7 +45,8 @@ interface MapState {
   /** Last fetched route result for display (lat/lng path) */
   routeResult: {
     fastest: { polyline: { lat: number; lng: number }[]; duration: string; distance: string } | null;
-    safest: { polyline: { lat: number; lng: number }[]; duration: string; distance: string; score: string } | null;
+    balanced: { polyline: { lat: number; lng: number }[]; duration: string; distance: string } | null;
+    safest: { polyline: { lat: number; lng: number }[]; duration: string; distance: string } | null;
   } | null;
   setRouteResult: (v: MapState['routeResult']) => void;
 
