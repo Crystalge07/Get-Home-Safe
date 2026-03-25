@@ -71,7 +71,13 @@ function RouteAndLayers() {
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
   const routeMarkersRef = useRef<google.maps.Marker[]>([]);
   const choroplethLayerRef = useRef<google.maps.Data | null>(null);
-  const tooltipRef = useRef<google.maps.InfoWindow | null>(null);
+  const tooltipRef = useRef<{
+    setContent: (title: string, subtitle: string) => void;
+    setPosition: (latLng: google.maps.LatLng) => void;
+    show: () => void;
+    hide: () => void;
+    destroy: () => void;
+  } | null>(null);
   const policeFireMarkersRef = useRef<google.maps.Marker[]>([]);
   const safeAreasMarkersRef = useRef<google.maps.Marker[]>([]);
 
@@ -140,7 +146,7 @@ function RouteAndLayers() {
         choroplethLayerRef.current.setMap(null);
         choroplethLayerRef.current = null;
       }
-      tooltipRef.current?.close();
+      tooltipRef.current?.hide();
       return;
     }
 
@@ -150,6 +156,72 @@ function RouteAndLayers() {
 
     const loadChoropleth = async () => {
       try {
+        if (!tooltipRef.current) {
+          class HoverTooltipOverlay extends google.maps.OverlayView {
+            private div: HTMLDivElement | null = null;
+            private position: google.maps.LatLng | null = null;
+
+            onAdd() {
+              const div = document.createElement('div');
+              div.style.position = 'absolute';
+              div.style.transform = 'translate(-50%, calc(-100% - 10px))';
+              div.style.background = '#1a1a1a';
+              div.style.color = '#ffffff';
+              div.style.borderRadius = '10px';
+              div.style.boxShadow = '0 6px 18px rgba(0,0,0,0.35)';
+              div.style.padding = '6px 8px';
+              div.style.fontFamily = 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+              div.style.whiteSpace = 'nowrap';
+              div.style.pointerEvents = 'none';
+              div.style.display = 'none';
+              div.style.zIndex = '1200';
+              this.div = div;
+              this.getPanes()?.floatPane.appendChild(div);
+            }
+
+            draw() {
+              if (!this.div || !this.position) return;
+              const p = this.getProjection()?.fromLatLngToDivPixel(this.position);
+              if (!p) return;
+              this.div.style.left = `${p.x}px`;
+              this.div.style.top = `${p.y}px`;
+            }
+
+            onRemove() {
+              if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+              this.div = null;
+            }
+
+            setTooltipContent(title: string, subtitle: string) {
+              if (!this.div) return;
+              this.div.innerHTML = `<div style="font-weight:700;font-size:12px;line-height:1.1">${title}</div><div style="opacity:.9;margin-top:3px;font-size:11px;line-height:1.1">${subtitle}</div>`;
+            }
+
+            setTooltipPosition(latLng: google.maps.LatLng) {
+              this.position = latLng;
+              this.draw();
+            }
+
+            showTooltip() {
+              if (this.div) this.div.style.display = 'block';
+            }
+
+            hideTooltip() {
+              if (this.div) this.div.style.display = 'none';
+            }
+          }
+
+          const overlay = new HoverTooltipOverlay();
+          overlay.setMap(map);
+          tooltipRef.current = {
+            setContent: (title, subtitle) => overlay.setTooltipContent(title, subtitle),
+            setPosition: (latLng) => overlay.setTooltipPosition(latLng),
+            show: () => overlay.showTooltip(),
+            hide: () => overlay.hideTooltip(),
+            destroy: () => overlay.setMap(null),
+          };
+        }
+
         const geojson = await fetch(TPS_NEIGHBOURHOOD_CRIME_RATES_URL).then((r) => (r.ok ? r.json() : null));
         if (!geojson || cancelled) return;
 
@@ -173,20 +245,21 @@ function RouteAndLayers() {
           };
         });
 
-        tooltipRef.current = tooltipRef.current ?? new google.maps.InfoWindow();
-
         mouseOverListener = layer.addListener('mouseover', (event: any) => {
           const neighbourhood = getNeighbourhoodName(event.feature);
           const assaultRate = getAssaultRate(event.feature);
-          tooltipRef.current?.setContent(
-            `<div style=\"padding:6px 8px\"><strong>${neighbourhood}</strong><br/>Assault rate (2025): ${assaultRate.toLocaleString()}</div>`
-          );
+          tooltipRef.current?.setContent(neighbourhood, `Assault rate (2025): ${assaultRate.toLocaleString()}`);
           tooltipRef.current?.setPosition(event.latLng);
-          tooltipRef.current?.open(map);
+          tooltipRef.current?.show();
+        });
+
+        // Follow cursor while moving within polygon.
+        layer.addListener('mousemove', (event: any) => {
+          tooltipRef.current?.setPosition(event.latLng);
         });
 
         mouseOutListener = layer.addListener('mouseout', () => {
-          tooltipRef.current?.close();
+          tooltipRef.current?.hide();
         });
       } catch {
         // Keep map usable if external data fails.
