@@ -1,5 +1,6 @@
 import { useMapStore } from '@/store/useMapStore';
 import { Flame, Building2, MapPin, Users, Shield } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const FloatingControls = () => {
   const {
@@ -14,26 +15,49 @@ const FloatingControls = () => {
   } = useMapStore();
 
   const layerButtons = [
-    { active: showHeatmap, toggle: toggleHeatmap, icon: Flame, label: 'Crime Heatmap', activeColor: 'text-danger' },
-    { active: showPoliceFire, toggle: togglePoliceFire, icon: Building2, label: 'Police & Fire Stations', activeColor: 'text-primary' },
-    { active: showSafeAreas, toggle: toggleSafeAreas, icon: MapPin, label: '24/7 Safe Areas', activeColor: 'text-accent' },
+    {
+      active: showHeatmap,
+      toggle: toggleHeatmap,
+      icon: Flame,
+      label: 'Crime Heatmap',
+      tooltip: 'Show/Hide Safety Heatmap',
+    },
+    {
+      active: showPoliceFire,
+      toggle: togglePoliceFire,
+      icon: Building2,
+      label: 'Police & Fire Stations',
+      tooltip: 'Safe Authorities',
+    },
+    {
+      active: showSafeAreas,
+      toggle: toggleSafeAreas,
+      icon: MapPin,
+      label: '24/7 Safe Areas',
+      tooltip: 'Verified 24/7 Safe Spaces',
+    },
   ];
 
   return (
     <>
       {/* Right side: layer toggles (top to bottom) */}
       <div className="fixed right-4 top-20 z-[1000] flex flex-col gap-2">
-        {layerButtons.map(({ active, toggle, icon: Icon, label, activeColor }) => (
-          <button
-            key={label}
-            onClick={toggle}
-            className={`w-10 h-10 rounded-full fab-shadow flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 ${
-              active ? 'bg-card ring-2 ring-primary/30' : 'bg-card'
-            }`}
-            title={label}
-          >
-            <Icon className={`w-4 h-4 ${active ? activeColor : 'text-muted-foreground'}`} />
-          </button>
+        {layerButtons.map(({ active, toggle, icon: Icon, label, tooltip }) => (
+          <Tooltip key={label}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggle}
+                aria-label={tooltip}
+                className={`w-10 h-10 rounded-full fab-shadow flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 ${
+                  active ? 'bg-card ring-2 ring-primary/30' : 'bg-card'
+                }`}
+                title={label}
+              >
+                <Icon className={`w-4 h-4 ${active ? 'text-foreground' : 'text-foreground/70'}`} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{tooltip}</TooltipContent>
+          </Tooltip>
         ))}
       </div>
 
