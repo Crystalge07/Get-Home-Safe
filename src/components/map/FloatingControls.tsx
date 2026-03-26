@@ -76,7 +76,7 @@ const FloatingControls = () => {
         >
           <Users className="w-4 h-4" />
           <span className="text-xs font-medium">
-            {walkMeHomeActive ? 'Sharing...' : 'Walk Me Home'}
+            {walkMeHomeActive ? 'Sharing...' : 'Walk with Me'}
           </span>
           {walkMeHomeActive && (
             <span className="relative flex h-2 w-2">
