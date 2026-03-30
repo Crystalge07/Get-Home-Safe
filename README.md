@@ -65,17 +65,6 @@ The per-route score is **reward minus penalty**, summed over samples. Higher is 
 
 The UI lets you switch which of these three polylines is highlighted.
 
-### Important limitations (read this)
-
-- **Not a guarantee of safety.** The score is a rough heuristic from open data and commercial APIs, not a prediction of incidents for your trip.
-- **Single crime signal for polygons.** Scoring uses **assault rate by neighbourhood** only, not other offence types or time-of-day patterns.
-- **Reporting vs reality.** Official statistics reflect **reported** crime and policing patterns; they can diverge from lived experience and may carry **bias** by area or demographic.
-- **Coarse geography.** Risk changes at the **neighbourhood** level, not per street segment; two paths through the same polygon get similar penalties at sampled points.
-- **Limited search space.** You only see routes Google suggests; the globally “safest” walk might not be among the alternatives.
-- **Dependencies.** If GeoJSON or Places data fails to load, scoring degrades (e.g. no polygons → no assault penalty; no markers → weak proximity reward).
-
-Use SafeMap as **one input** alongside judgment, visibility, companions, and local knowledge—not as definitive routing advice.
-
 ## Map layers (UI)
 
 - **Crime heatmap (choropleth)** — TPS neighbourhood polygons coloured by assault rate; optional overlay.
@@ -87,9 +76,3 @@ Use SafeMap as **one input** alongside judgment, visibility, companions, and loc
 ```sh
 npm run build
 ```
-
-## Deploy
-
-Build the project and deploy the `dist` folder to any static host (Vercel, Netlify, etc.).
-
-Restrict your Google Maps API key by HTTP referrer (and only enable the APIs you use) before going to production.
