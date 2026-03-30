@@ -1,6 +1,6 @@
 # SafeMap
 
-Find the safest walking route home. SafeMap shows crime heatmaps, police & fire stations, 24/7 safe areas, and lets you choose between the fastest route and the safest route based on crime or general safety index data.
+Find the safest walking route home. SafeMap shows crime heatmaps, police & fire stations, 24/7 safe areas, and lets you choose between the fastest route and the safest route based on neighbourhood crime data and proximity to safety-related places.
 
 ## Tech stack
 
@@ -32,12 +32,55 @@ VITE_GOOGLE_MAPS_API_KEY=your_api_key_here
 npm run dev
 ```
 
-## Safety layers
+## Data sources
 
-- **Crime-based safety**: Heatmap and route scoring use local crime data (default demo points; can be wired to SpotCrime API or local open data in `GoogleMapView.tsx`).
-- **General safety index**: Set `ARCGIS_SAFETY_GEOJSON_URL` in `src/config/arcgis.ts` to the ArcGIS feature service query URL that returns GeoJSON (e.g. from the [ArcGIS safety experience](https://experience.arcgis.com/experience/19cd9accd61542ffb62be3b5f29ee778)). The app overlays a color-coded safety zone layer and uses it for route scoring when that mode is selected.
+- **Neighbourhood crime polygons**: The map loads [Toronto Police Service (TPS) Neighbourhood Crime Rates Open Data](https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/Neighbourhood_Crime_Rates_Open_Data/FeatureServer) as GeoJSON. The choropleth and route scoring use the `ASSAULT_RATE_2025` field on each neighbourhood polygon.
+- **Safety markers** (police, fire, hospitals, and selected “safe space” place types): Loaded via the Google Places API, scoped to the bounding box of the loaded crime polygons (Greater Toronto Area–centric in practice).
 
-The app uses the currently selected safety layer to score the “safest” walking route versus the “fastest” route.
+Implementation lives in `src/components/map/GoogleMapView.tsx` (including the ArcGIS query URL). To use a different jurisdiction or dataset, you would replace or parameterize that GeoJSON source and align property names (e.g. assault rate field) with what the scorer expects.
+
+## How routing works (“fastest”, “safest”, “balanced”)
+
+SafeMap does **not** run a custom graph search over every street. It asks Google’s **Directions API** for **walking** directions with **route alternatives** enabled, then **scores each returned route** with a simple model.
+
+### Step 1 — Candidate routes
+
+Google may return several alternative walking routes between origin and destination. Each route is turned into a polyline (sequence of lat/lng points). Only these alternatives are considered; paths that Google does not return are never evaluated.
+
+### Step 2 — Safety score per route
+
+For each candidate route, the app walks the polyline and **samples every second point** (to keep work reasonable). At each sample it computes:
+
+1. **Proximity reward** — Distance in meters to the **nearest** “safety” point (aggregated police, fire, hospital, and safe-space markers from Places). Each sample adds a reward between `0` and `1`: full contribution when within **220 m**, falling off linearly to zero farther away. If no safety markers are loaded yet, the code treats distance as **400 m** for every sample (so the reward term is uniformly weak until markers exist).
+
+2. **Crime penalty** — The sample is tested against TPS **neighbourhood polygons** (point-in-polygon). If the point lies inside a polygon, that neighbourhood’s **assault rate** (`ASSAULT_RATE_2025`) adds a penalty proportional to `assaultRate / 1200` for that sample. Points outside all polygons add **no** assault penalty (treated as zero risk in the model).
+
+The per-route score is **reward minus penalty**, summed over samples. Higher is “safer” in this heuristic.
+
+### Step 3 — Picking the three modes
+
+- **Fastest** — The candidate with the **shortest travel time** (Directions duration).
+- **Safest** — The candidate with the **highest safety score** (not necessarily the fastest).
+- **Balanced** — Candidates are ranked by a **50/50 blend**: normalized travel time versus how far each route’s safety score falls **below** the best (safest) score. The implementation prefers a route that is not identical to the “safest” pick when another reasonable alternative exists.
+
+The UI lets you switch which of these three polylines is highlighted.
+
+### Important limitations (read this)
+
+- **Not a guarantee of safety.** The score is a rough heuristic from open data and commercial APIs, not a prediction of incidents for your trip.
+- **Single crime signal for polygons.** Scoring uses **assault rate by neighbourhood** only, not other offence types or time-of-day patterns.
+- **Reporting vs reality.** Official statistics reflect **reported** crime and policing patterns; they can diverge from lived experience and may carry **bias** by area or demographic.
+- **Coarse geography.** Risk changes at the **neighbourhood** level, not per street segment; two paths through the same polygon get similar penalties at sampled points.
+- **Limited search space.** You only see routes Google suggests; the globally “safest” walk might not be among the alternatives.
+- **Dependencies.** If GeoJSON or Places data fails to load, scoring degrades (e.g. no polygons → no assault penalty; no markers → weak proximity reward).
+
+Use SafeMap as **one input** alongside judgment, visibility, companions, and local knowledge—not as definitive routing advice.
+
+## Map layers (UI)
+
+- **Crime heatmap (choropleth)** — TPS neighbourhood polygons coloured by assault rate; optional overlay.
+- **Police & fire** — Markers for authorities from Places (within the loaded coverage area).
+- **Safe areas** — Markers for selected 24/7–oriented place types (e.g. hospitals, pharmacies, universities, convenience stores), filtered the same way.
 
 ## Build
 
@@ -48,3 +91,5 @@ npm run build
 ## Deploy
 
 Build the project and deploy the `dist` folder to any static host (Vercel, Netlify, etc.).
+
+Restrict your Google Maps API key by HTTP referrer (and only enable the APIs you use) before going to production.
